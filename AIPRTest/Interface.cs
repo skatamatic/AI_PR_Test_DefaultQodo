@@ -1,4 +1,4 @@
-﻿// Interfaces_Solid.cs
+﻿// Interface.cs
 using System;
 using System.Collections.Generic;
 
@@ -25,10 +25,12 @@ public interface INotificationService
 {
     void SendOrderConfirmation(string customerId, OrderData order);
     void NotifyStockLow(ProductData product);
+    void SendOrderCancellationNotification(string customerId, int orderId, string reason);
 }
 
 public interface IOrderFulfillmentService
 {
     OrderData PlaceOrder(string customerId, List<CreateOrderItemDetail> items);
     bool ShipOrder(int orderId);
+    bool CancelOrder(int orderId, string reason);
 }

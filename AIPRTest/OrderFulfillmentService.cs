@@ -46,10 +46,12 @@
         // Update stock after successful payment
         foreach (var itemDetail in items)
         {
-            var product = _productRepo.GetProductById(itemDetail.ProductId); // Re-fetch to be safe, or use earlier instance
+            var product = _productRepo.GetProductById(itemDetail.ProductId); // Re-fetch to ensure latest stock for update
             int newStock = product.StockQuantity - itemDetail.Quantity;
             _productRepo.UpdateProductStock(product.Id, newStock);
-            _notificationService.NotifyStockLow(product); // Check if stock is low after update
+            // Potentially re-fetch product data for notification if stock levels are critical for it
+            var updatedProduct = _productRepo.GetProductById(itemDetail.ProductId);
+            _notificationService.NotifyStockLow(updatedProduct);
         }
 
         var order = new OrderData
@@ -57,7 +59,7 @@
             CustomerId = customerId,
             Items = orderItemsData,
             TotalAmount = totalAmount,
-            Status = "Processed" // Payment successful
+            Status = "Processed" // Payment successful, stock deducted
         };
 
         var createdOrder = _orderRepo.CreateOrder(order);
@@ -78,5 +80,68 @@
         Console.WriteLine($"SOLID: Order {orderId} marked as Shipped.");
         // In a real system, trigger shipping logistics here
         return true;
+    }
+
+    public bool CancelOrder(int orderId, string reason)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+        {
+            // Decided to log and proceed rather than throw, policy can be debated.
+            Console.WriteLine($"SOLID Warning: Order cancellation for ID {orderId} initiated without a reason or with whitespace reason.");
+            reason = "No reason provided.";
+        }
+
+        var order = _orderRepo.GetOrderById(orderId);
+        if (order == null)
+        {
+            Console.WriteLine($"SOLID Error: Order {orderId} not found. Cannot cancel.");
+            return false;
+        }
+
+        if (order.Status == "Shipped")
+        {
+            Console.WriteLine($"SOLID Info: Order {orderId} is already shipped. Cannot cancel.");
+            return false;
+        }
+
+        if (order.Status == "Cancelled")
+        {
+            Console.WriteLine($"SOLID Info: Order {orderId} is already cancelled.");
+            return false; // Or true, if idempotency is desired without action
+        }
+
+        // If order was "Processed", stock would have been deducted. Replenish it.
+        if (order.Status == "Processed" && order.Items != null)
+        {
+            Console.WriteLine($"SOLID Info: Replenishing stock for cancelled order {orderId}.");
+            foreach (var item in order.Items)
+            {
+                var product = _productRepo.GetProductById(item.ProductId);
+                if (product != null)
+                {
+                    int newStock = product.StockQuantity + item.Quantity;
+                    _productRepo.UpdateProductStock(product.Id, newStock);
+                    Console.WriteLine($"SOLID: Stock for product {product.Name} (ID: {product.Id}) updated to {newStock}.");
+                }
+                else
+                {
+                    Console.WriteLine($"SOLID Warning: Product with ID {item.ProductId} not found during stock replenishment for cancelled order {orderId}.");
+                }
+            }
+        }
+        // For other statuses like "PendingPayment", stock might not have been affected yet.
+
+        bool statusUpdated = _orderRepo.UpdateOrderStatus(orderId, "Cancelled");
+        if (statusUpdated)
+        {
+            Console.WriteLine($"SOLID: Order {orderId} marked as Cancelled. Reason: {reason}");
+            _notificationService.SendOrderCancellationNotification(order.CustomerId, orderId, reason);
+            return true;
+        }
+        else
+        {
+            Console.WriteLine($"SOLID Error: Failed to update order status to Cancelled for order {orderId}.");
+            return false;
+        }
     }
 }
