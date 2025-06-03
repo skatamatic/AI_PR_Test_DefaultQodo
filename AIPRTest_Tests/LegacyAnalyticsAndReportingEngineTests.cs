@@ -68,7 +68,6 @@ public class LegacyAnalyticsAndReportingEngineTests
             new OrderItemData { ProductId = 1, Quantity = 1, PriceAtPurchase = product1.CurrentPrice }
         });
 
-
         // Act
         string report = _legacyEngine.GenerateComplexSalesReport(today.AddMonths(-1), today);
 
@@ -141,17 +140,17 @@ public class LegacyAnalyticsAndReportingEngineTests
 
         // Assert
         Assert.IsTrue(trends.ContainsKey("Electronics"));
-        Assert.AreEqual(1200m + 1200m, trends["Electronics"]);
+        Assert.That(trends["Electronics"], Is.EqualTo(1200m + 1200m));
 
         Assert.IsTrue(trends.ContainsKey("Accessories"));
-        Assert.AreEqual(50m, trends["Accessories"]);
+        Assert.That(trends["Accessories"], Is.EqualTo(50m));
 
         Assert.IsTrue(trends.ContainsKey("Home Goods"));
-        Assert.AreEqual(40m, trends["Home Goods"]);
+        Assert.That(trends["Home Goods"], Is.EqualTo(40m));
 
         // Check order (descending by value)
         var trendList = trends.ToList();
-        Assert.AreEqual("Electronics", trendList[0].Key);
+        Assert.That(trendList[0].Key, Is.EqualTo("Electronics"));
     }
 
     [Test]

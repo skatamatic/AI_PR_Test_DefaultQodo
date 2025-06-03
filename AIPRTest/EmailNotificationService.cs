@@ -7,7 +7,7 @@
 
     public void NotifyStockLow(ProductData product)
     {
-        if (product.StockQuantity < 10) // Arbitrary low stock threshold
+        if (product.StockQuantity < 8) // Arbitrary low stock threshold
         {
             Console.WriteLine($"SOLID: Stock low notification for product {product.Name} (ID: {product.Id}). Current stock: {product.StockQuantity}.");
         }
