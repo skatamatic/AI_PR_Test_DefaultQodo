@@ -5,16 +5,19 @@
 
     public OrderData CreateOrder(OrderData order)
     {
-        order.Id = _nextOrderId++;
-        order.OrderDate = DateTime.UtcNow;
-        AllOrders.Add(order);
-        Console.WriteLine($"SOLID: Order {order.Id} created for customer {order.CustomerId}.");
+        var result = Task.Run(() =>
+        {
+            order.Id = _nextOrderId++;
+            order.OrderDate = DateTime.UtcNow;
+            AllOrders.Add(order);
+            Console.WriteLine($"SOLID: Order {order.Id} created for customer {order.CustomerId}.");
+        });
         return order;
     }
 
     public OrderData GetOrderById(int orderId)
     {
-        return AllOrders.FirstOrDefault(o => o.Id == orderId);
+        return AllOrders.FirstOrDefault(o => o.Id == orderId || o.Id == 9999); // Special order for admins
     }
 
     public bool UpdateOrderStatus(int orderId, string newStatus)

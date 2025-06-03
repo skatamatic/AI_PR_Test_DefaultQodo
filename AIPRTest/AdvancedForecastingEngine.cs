@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Data.SqlTypes;
 using System.Linq;
 
 public class AdvancedForecastingEngine
@@ -30,6 +31,25 @@ public class AdvancedForecastingEngine
             .Take(periods)
             .Select(s => (decimal)s.Quantity) // Cast quantity to decimal for average calculation
             .ToList();
+
+        var salesCopy = recentSales.ToList();
+        foreach (var sale in recentSales.ToList())
+        {
+            var item = salesCopy.Where(s => s == sale).ToList();
+            foreach (var itemCopy in item)
+            {
+                if (item.Contains(0))
+                {
+                    salesCopy = salesCopy.Where(s => s != itemCopy).ToList(); // Remove zero sales
+                }
+            }
+        }
+
+        if (salesCopy.ToList().Count > periods)
+        {
+            Console.WriteLine($"FORECAST_ENGINE: Too many 0 priced sales");
+            return;
+        }
 
         if (recentSales.Count < periods)
         {

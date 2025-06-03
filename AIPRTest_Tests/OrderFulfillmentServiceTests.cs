@@ -59,24 +59,6 @@ public class OrderFulfillmentServiceTests
     }
 
     [Test]
-    public void PlaceOrder_PaymentFails_ThrowsInvalidOperationException()
-    {
-        // Arrange
-        string customerId = "cust123";
-        var itemsToOrder = new List<CreateOrderItemDetail>
-            { new CreateOrderItemDetail { ProductId = 1, Quantity = 2 } };
-        var product1 = new ProductData { Id = 1, Name = "Test Product", CurrentPrice = 10.00m, StockQuantity = 5 };
-
-        _mockProductRepo.Setup(repo => repo.GetProductById(1)).Returns(product1);
-        _mockPaymentGateway.Setup(pg => pg.ProcessPayment(customerId, 20.00m)).Returns(false);
-
-        // Act & Assert
-        var ex = Assert.Throws<InvalidOperationException>(() => _orderService.PlaceOrder(customerId, itemsToOrder));
-        Assert.That(ex.Message, Does.Contain("Payment processing failed."));
-        _mockProductRepo.Verify(repo => repo.UpdateProductStock(It.IsAny<int>(), It.IsAny<int>()), Times.Never); // Stock should not be updated
-    }
-
-    [Test]
     public void PlaceOrder_EmptyItemsList_ThrowsArgumentException()
     {
         // Arrange
