@@ -73,7 +73,7 @@ public class OrderFulfillmentServiceTests
         // Act & Assert
         var ex = Assert.Throws<InvalidOperationException>(() => _orderService.PlaceOrder(customerId, itemsToOrder));
         Assert.That(ex.Message, Does.Contain("Payment processing failed."));
-        _mockProductRepo.Verify(repo => repo.UpdateProductStock(It.IsAny<int>(), It.IsAny<int>()), Times.Never); // Stock should not be updated
+        _mockProductRepo.Verify(repo => repo.UpdateProductStock(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
     }
 
     [Test]
@@ -125,7 +125,7 @@ public class OrderFulfillmentServiceTests
     {
         // Arrange
         int orderId = 1;
-        var order = new OrderData { Id = orderId, Status = "Pending" }; // Not "Processed"
+        var order = new OrderData { Id = orderId, Status = "Pending" };
         _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns(order);
 
         // Act
@@ -134,5 +134,135 @@ public class OrderFulfillmentServiceTests
         // Assert
         Assert.IsFalse(result);
         _mockOrderRepo.Verify(repo => repo.UpdateOrderStatus(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public void CancelOrder_OrderIsProcessed_CancelsOrderUpdatesStatusRestoresStockAndNotifies()
+    {
+        // Arrange
+        int orderId = 101;
+        string customerId = "cust123";
+        string reason = "Changed my mind";
+        var productInOrder = new ProductData { Id = 1, Name = "Test Product", CurrentPrice = 10.00m, StockQuantity = 3 }; // Stock after PlaceOrder
+        var orderToCancel = new OrderData
+        {
+            Id = orderId,
+            CustomerId = customerId,
+            Status = "Processed",
+            Items = new List<OrderItemData> { new OrderItemData { ProductId = 1, Quantity = 2, PriceAtPurchase = 10.00m } }
+        };
+
+        _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns(orderToCancel);
+        _mockProductRepo.Setup(repo => repo.GetProductById(1)).Returns(productInOrder);
+        _mockOrderRepo.Setup(repo => repo.UpdateOrderStatus(orderId, "Cancelled")).Returns(true);
+
+        // Act
+        bool result = _orderService.CancelOrder(orderId, reason);
+
+        // Assert
+        Assert.IsTrue(result);
+        _mockOrderRepo.Verify(repo => repo.UpdateOrderStatus(orderId, "Cancelled"), Times.Once);
+        _mockProductRepo.Verify(repo => repo.UpdateProductStock(1, 5), Times.Once); // 3 (current) + 2 (cancelled) = 5
+        _mockNotificationService.Verify(ns => ns.SendOrderCancellationNotification(customerId, orderId, reason), Times.Once);
+    }
+
+    [Test]
+    public void CancelOrder_OrderIsShipped_ReturnsFalseAndDoesNotCancel()
+    {
+        // Arrange
+        int orderId = 102;
+        string reason = "Too late";
+        var shippedOrder = new OrderData { Id = orderId, Status = "Shipped" };
+        _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns(shippedOrder);
+
+        // Act
+        bool result = _orderService.CancelOrder(orderId, reason);
+
+        // Assert
+        Assert.IsFalse(result);
+        _mockOrderRepo.Verify(repo => repo.UpdateOrderStatus(It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+        _mockProductRepo.Verify(repo => repo.UpdateProductStock(It.IsAny<int>(), It.IsAny<int>()), Times.Never);
+        _mockNotificationService.Verify(ns => ns.SendOrderCancellationNotification(It.IsAny<string>(), It.IsAny<int>(), It.IsAny<string>()), Times.Never);
+    }
+
+    [Test]
+    public void CancelOrder_OrderIsAlreadyCancelled_ReturnsFalse()
+    {
+        // Arrange
+        int orderId = 103;
+        string reason = "Trying again";
+        var cancelledOrder = new OrderData { Id = orderId, Status = "Cancelled" };
+        _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns(cancelledOrder);
+
+        // Act
+        bool result = _orderService.CancelOrder(orderId, reason);
+
+        // Assert
+        Assert.IsFalse(result); // Policy: don't re-process if already cancelled
+    }
+
+    [Test]
+    public void CancelOrder_OrderNotFound_ReturnsFalse()
+    {
+        // Arrange
+        int orderId = 999;
+        _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns((OrderData)null);
+
+        // Act
+        bool result = _orderService.CancelOrder(orderId, "Does not exist");
+
+        // Assert
+        Assert.IsFalse(result);
+    }
+
+    [Test]
+    public void CancelOrder_NoReasonProvided_CancelsWithDefaultReasonAndRestoresStock()
+    {
+        // Arrange
+        int orderId = 104;
+        string customerId = "cust456";
+        var productInOrder = new ProductData { Id = 2, Name = "Another Product", CurrentPrice = 5.00m, StockQuantity = 8 };
+        var orderToCancel = new OrderData
+        {
+            Id = orderId,
+            CustomerId = customerId,
+            Status = "Processed",
+            Items = new List<OrderItemData> { new OrderItemData { ProductId = 2, Quantity = 1, PriceAtPurchase = 5.00m } }
+        };
+
+        _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns(orderToCancel);
+        _mockProductRepo.Setup(repo => repo.GetProductById(2)).Returns(productInOrder);
+        _mockOrderRepo.Setup(repo => repo.UpdateOrderStatus(orderId, "Cancelled")).Returns(true);
+
+        // Act
+        bool result = _orderService.CancelOrder(orderId, " "); // Whitespace reason
+
+        // Assert
+        Assert.IsTrue(result);
+        _mockOrderRepo.Verify(repo => repo.UpdateOrderStatus(orderId, "Cancelled"), Times.Once);
+        _mockProductRepo.Verify(repo => repo.UpdateProductStock(2, 9), Times.Once); // 8 + 1 = 9
+        _mockNotificationService.Verify(ns => ns.SendOrderCancellationNotification(customerId, orderId, "No reason provided."), Times.Once);
+    }
+
+    [Test]
+    public void CancelOrder_StatusNotProcessed_DoesNotReplenishStockButCancels()
+    {
+        // Arrange
+        int orderId = 105;
+        string customerId = "cust789";
+        string reason = "Payment pending too long";
+        var orderToCancel = new OrderData { Id = orderId, CustomerId = customerId, Status = "PendingPayment", Items = new List<OrderItemData>() }; // No items that affected stock
+
+        _mockOrderRepo.Setup(repo => repo.GetOrderById(orderId)).Returns(orderToCancel);
+        _mockOrderRepo.Setup(repo => repo.UpdateOrderStatus(orderId, "Cancelled")).Returns(true);
+
+        // Act
+        bool result = _orderService.CancelOrder(orderId, reason);
+
+        // Assert
+        Assert.IsTrue(result);
+        _mockOrderRepo.Verify(repo => repo.UpdateOrderStatus(orderId, "Cancelled"), Times.Once);
+        _mockProductRepo.Verify(repo => repo.UpdateProductStock(It.IsAny<int>(), It.IsAny<int>()), Times.Never); // Stock should not be touched
+        _mockNotificationService.Verify(ns => ns.SendOrderCancellationNotification(customerId, orderId, reason), Times.Once);
     }
 }
