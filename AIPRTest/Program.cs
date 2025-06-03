@@ -136,7 +136,19 @@
         forecastEngine.CalculateReorderPoint(averageDailyDemand: annualDemand / 365.0, leadTimeInDays: 14, safetyStock: 10); // Example values
         Console.WriteLine("---------------------------------\n");
 
+        Console.WriteLine("--- Complexity Graph Production ---");
+        string complexityGraph = ProduceComplexityGraph("Sample Data for Complexity Graph");
+        Console.WriteLine($"Produced Complexity Graph: {complexityGraph}");
+        Console.WriteLine("---------------------------------\n");
+
         Console.WriteLine("All operations complete. Press any key to exit.");
         Console.ReadKey();
+    }
+
+    public static string ProduceComplexityGraph(string data)
+    {
+        var engine = new AdvancedForecastingEngine();
+        var graph = CrossFunctionalHelper.PerformComplexFormattingAndValidation(data, 10, true);
+        return engine.CalculateExponentialSmoothingForecast(graph, 0.1);
     }
 }
